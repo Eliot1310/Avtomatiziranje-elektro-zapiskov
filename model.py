@@ -7,7 +7,7 @@ from meje import *
 # R low je kvečjem 1 na kocko, se vpiše po celotni vrstici
 
 seznam_vrst_meritev = ["AUTO TN", "Zloop", "Z LINE",
-                       "RCD Auto", "R low 4", "Varistor", "R iso", "Padec napetosti"]
+                       "RCD Auto", "R low 4", "Varistor", "R iso", "Padec napetosti", "R IZO", "ZLOOP 4W", "ZLINE 4W"]
 seznam_enot_za_pretvorbe = ["V", "A", "Ω", "s"]
 seznam_predpon_za_pretvorbe = ["m", "k"]
 
@@ -37,6 +37,11 @@ def zapisi_kocko_meritev_v_excel(kocka, loceno_besedilo, slovar_kock_in_ustrezni
     
     global st_vnesenih_meritev
     global st_vnesenih_meritev_RCD
+    
+    ipsc_vrednosti_zloop4w = 1000000000000000000
+    ipsc_vrednosti_zline4w = 1000000000000000000
+    ustrezna_meritev_zloop4w = None
+    ustrezna_meritev_zline4w = None
     
     prazno = " "
     uln, zln, ipsc_ln, ipsc_lpe = "X", "X", "X", "X"
@@ -93,17 +98,17 @@ def zapisi_kocko_meritev_v_excel(kocka, loceno_besedilo, slovar_kock_in_ustrezni
     
     # tale spodnja kocka kode je zaenkrat še ne testirana, oziroma je možno, da bi se nahajal kak bug!!
     # znal bi biti kak problem z zapisovanjem ali kaj podobnega
-    if slovar_vrst_meritev["R iso"] > 1:
+    if slovar_vrst_meritev["R iso"]  + slovar_vrst_meritev["R IZO"] > 1:
         nova_kocka = []
         seznam_riso_meritev = []
         for meritev in kocka:
-            if meritev.doloci_vrsto_meritve() == "R iso":
+            if meritev.doloci_vrsto_meritve() in ["R iso", "R IZO"]:
                 # inšturment vedno izpiše v MΩ
                 seznam_riso_meritev.append(meritev.najdi_Rlpe().replace(" MΩ", "").replace(",","."))
         seznam_riso_meritev.sort(key = lambda x: velikost_stringa(x))
         riso_meritev_z_minimalno = seznam_riso_meritev[0]
         for idx, meritev in enumerate(kocka):
-            if meritev.doloci_vrsto_meritve() == "R iso":
+            if meritev.doloci_vrsto_meritve() in ["R iso", "R IZO"]:
                 if idx == seznam_riso_meritev.index(riso_meritev_z_minimalno):
                     nova_kocka.append(meritev)            
             else:
@@ -222,6 +227,8 @@ def zapisi_kocko_meritev_v_excel(kocka, loceno_besedilo, slovar_kock_in_ustrezni
     
     # Stvar je treba narediti v večih korakih, saj lahko podatki v posamezni meritvi vplivajo na celotno kocko ali kasnejše.
     # najprej odpravimo AUTO TN
+    
+
 
     for meritev in kocka:
         vrsta_meritve = meritev.doloci_vrsto_meritve()
@@ -248,6 +255,58 @@ def zapisi_kocko_meritev_v_excel(kocka, loceno_besedilo, slovar_kock_in_ustrezni
                 st_vnesenih_meritev += 1
                 array_ki_ga_zapisemo_v_csv = [st_vnesenih_meritev, ime, prazno, prazno, prazno, glavna_izenac_povezava, prazno, rlpe, tip_varovalke, I_varovalke, t_varovalke, f"{zlpe}/{ipsc_ln}", f"{zln}/{ipsc_lpe}/{dU}", 
                                                 prazno,  I_dN, prazno, t1x, t5x, Uc, prazno, komentar, vrsta_meritve, uln, maxRplusRminus, isc_faktor, ia_psc_navidezni_stolpec, pot]
+                writer.writerow(array_ki_ga_zapisemo_v_csv)
+                csvfile.close()
+                
+        if vrsta_meritve in ["ZLOOP 4W", "Zline 4W"]:
+            if vrsta_meritve == "ZLOOP 4W":
+                #print(meritev.najdi_Ipsc())
+                if float(meritev.najdi_Ipsc()) < ipsc_vrednosti_zloop4w:
+                    ustrezna_meritev_zloop4w = meritev
+                    ipsc_vrednosti_zloop4w = float(meritev.najdi_Ipsc())
+            else:
+                if float(meritev.najdi_Ipsc()) < ipsc_vrednosti_zline4w:
+                    ustrezna_meritev_zline4w = meritev
+                    ipsc_vrednosti_zline4w = float(meritev.najdi_Ipsc())
+                
+                           
+    if "ZLOOP 4W" in vrste_meritev_v_kocki or "ZLINE 4W" in vrste_meritev_v_kocki:
+        with open("Csvji//csv_za_excel_datoteko_osnovne.csv", "a", encoding='utf-8', newline='') as csvfile:
+            writer = csv.writer(
+                csvfile, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+
+            if not ustrezna_meritev_zline4w or ustrezna_meritev_zline4w.besedilo.count("p//") > 0:
+                ipsc_zline, z_zline = "X", "X"
+            else:
+                ipsc_zline = ustrezna_meritev_zline4w.najdi_Ipsc()
+                z_zline = ustrezna_meritev_zline4w.najdi_Z()
+            
+            if not ustrezna_meritev_zloop4w or ustrezna_meritev_zloop4w.besedilo.count("p//") > 0:
+                ipsc_zloop, z_zloop = "X", "X"
+                uln, ipsc_lpe, zlpe, ia_psc_navidezni_stolpec, tip_varovalke, I_varovalke, t_varovalke, isc_faktor, komentar = "X", "X", "X", "X", "X", "X", "X", "X", "X"
+                
+            else:
+                ipsc_zloop = ustrezna_meritev_zloop4w.najdi_Ipsc()
+                z_zloop = ustrezna_meritev_zloop4w.najdi_Z()
+                uln = ustrezna_meritev_zloop4w.najdi_Uln()
+                ipsc_lpe = ustrezna_meritev_zloop4w.najdi_Ipsc_LPE()
+                zlpe = ustrezna_meritev_zloop4w.najdi_Z_LPE()
+                ia_psc_navidezni_stolpec = ustrezna_meritev_zloop4w.najdi_Ia_Ipsc(
+                )
+                tip_varovalke = ustrezna_meritev_zloop4w.najdi_tip_varovalke(
+                )
+                I_varovalke = ustrezna_meritev_zloop4w.najdi_I_varovalke()
+                t_varovalke = ustrezna_meritev_zloop4w.najdi_t_varovalke()
+                isc_faktor = ustrezna_meritev_zloop4w.najdi_Isc_faktor()
+                vrsta_meritve = "ZLOOP 4W / ZLINE 4W"
+                komentar = ustrezna_meritev_zloop4w.najdi_komentar()
+                
+                if not dU:
+                    dU = "X"
+                
+                st_vnesenih_meritev += 1
+                array_ki_ga_zapisemo_v_csv = [st_vnesenih_meritev, ime, prazno, prazno, prazno, glavna_izenac_povezava, prazno, rlpe, tip_varovalke, I_varovalke, t_varovalke, f"{z_zloop}/{ipsc_zloop}", f"{z_zline}/{ipsc_zline}/{dU}",
+                                                prazno, I_dN, prazno, t1x, t5x, Uc, prazno, komentar, vrsta_meritve, uln, maxRplusRminus, isc_faktor, ia_psc_navidezni_stolpec, pot]
                 writer.writerow(array_ki_ga_zapisemo_v_csv)
                 csvfile.close()
 
