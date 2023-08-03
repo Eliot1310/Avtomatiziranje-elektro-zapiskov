@@ -1,7 +1,10 @@
+import re
+
 SEZNAM_VRST_MERITEV = [
     "AUTO TN",
     "Zloop",
     "Z LINE",
+    "Z auto",
     "RCD Auto",
     "R low 4",
     "Varistor",
@@ -10,17 +13,25 @@ SEZNAM_VRST_MERITEV = [
     "R IZO",
     "ZLOOP 4W",
     "ZLINE 4W",
+    "Čas praznjenja",
+    "Discharge time",
+    "Ozemljitvena upornost",
+    "Neprekinjenost",
 ]
 SEZNAM_ENOT_ZA_PRETVORBE = ["V", "A", "Ω", "s"]
 SEZNAM_PREDPON_ZA_PRETVORBE = ["m", "k"]
+
+VZOREC_ZA_KOMENTAR = r"(?<=Comment: (?!.*Comment: )).*$"
 
 
 class Meritev:
     def __init__(self, besedilo_meritve):
         self.besedilo = besedilo_meritve
-        loceno_besedilo = besedilo_meritve.split(", ")
+        loceno_besedilo_po_vejicah = besedilo_meritve.split(", ")
+
+        # TODO izboljšaj tole z regexom
         self.besedilo_po_elementih = [
-            i.replace("Pot:", "Pot: ").strip() for i in loceno_besedilo
+            i.replace("Pot:", "Pot: ").strip() for i in loceno_besedilo_po_vejicah
         ]
 
         self.vrsta_meritve = self.doloci_vrsto_meritve
@@ -32,20 +43,16 @@ class Meritev:
 
     def najdi_komentar(self):
         if "Comment:" in self.besedilo:
-            st_pojavitev = self.besedilo.count("Comment:")
-            idx_komentarja = najdi_n_to_pojavitev_substringa(
-                self.besedilo, "Comment:", st_pojavitev
-            )
-            komentar = self.besedilo[idx_komentarja:]
-            return komentar.replace("Comment:", "").replace("//", "").strip()
+            komentar = re.search(VZOREC_ZA_KOMENTAR, self.besedilo).group()
+            return komentar.replace("//", "").strip()
         else:
             return ""
 
     def najdi_element(self, ime_elementa, pretvori_v_osnovne=True):
         element = "X"
-        for i in self.besedilo_po_elementih:
-            if ime_elementa in i:
-                element = i[len(ime_elementa) + 1 :]
+        for el in self.besedilo_po_elementih:
+            if el.startswith(ime_elementa):
+                element = el[len(ime_elementa) + 1 :]
                 if pretvori_v_osnovne:
                     return pretvori_v_osnovne_enote(element)
                 else:
@@ -90,8 +97,8 @@ class Meritev:
 
     def najdi_Ipsc_LPE(self):
         return self.najdi_element("Ipsc (LPE):")
-    
-    def najdi_R(self): # To je glavna izenačitvena povezava
+
+    def najdi_R(self):  # To je glavna izenačitvena povezava
         return self.najdi_element("R:")
 
     def najdi_Zref(self):
@@ -113,7 +120,7 @@ class Meritev:
         return self.najdi_element("Toleranca:")
 
     def najdi_Ipsc(self):
-        return self.najdi_element("Ipsc:").replace(",",".")
+        return self.najdi_element("Ipsc:").replace(",", ".")
 
     def najdi_Z(self):
         return self.najdi_element("Z:")
@@ -132,6 +139,9 @@ class Meritev:
 
     def najdi_Un(self):
         return self.najdi_element("Un:")
+
+    def najdi_Ulpe(self):
+        return self.najdi_element("Ulpe:")
 
     # spodnji elementi so za meritve ki se začnejo z RCD Auto
 
@@ -265,20 +275,32 @@ class Meritev:
     def najdi_Riso(self):
         return self.najdi_element("Riso:")
 
+    # discharge time
 
-def najdi_n_to_pojavitev_substringa(seno, igla, n):
-    start = seno.find(igla)
-    while start >= 0 and n > 1:
-        start = seno.find(igla, start + len(igla))
-        n -= 1
-    return start
+    def najdi_t(self):
+        return self.najdi_element("t:")
+
+    def najdi_meja_t(self):
+        return self.najdi_element("Meja(t):")
+
+    # ozemljitvena upornost
+
+    def najdi_Re(self):
+        return self.najdi_element("Re:")
+
+    # neprekinjenost
+
+    def najdi_trajanje(self):
+        return self.najdi_element("Trajanje:")
+
+    def najdi_I_out(self):
+        return self.najdi_element("I out:")
 
 
 def pretvori_v_osnovne_enote(niz):
     """
     Funkcija, ki pretvarja iz mili ali kilo enot v osnovne
     """
-
     for predpona in SEZNAM_PREDPON_ZA_PRETVORBE:
         for enota in SEZNAM_ENOT_ZA_PRETVORBE:
             if predpona + enota in niz:
