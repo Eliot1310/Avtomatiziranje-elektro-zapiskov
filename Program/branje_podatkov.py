@@ -1,5 +1,5 @@
 # datoteka za branje podatkov z datoteke in generiranje ustrezne csv datoteke
-import model
+from model import *
 import Meritev
 from colorama import Fore
 from meje_instalacije import *
@@ -8,57 +8,20 @@ from meje_strelovodi import *
 from meje_omare import *
 import re
 import os
-import sys
+from poti_do_datotek import *
 
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font, Alignment
 
+# Ko se importira GUI, se avtomatično izvede vprašalnik
+from GUI import *
 
 # Če hočeš vklopiti debugganje, daš debug_mode na True
 debug_mode = True
 
 # obstaja 7 osnovnih vrst meritev: AUTO TN, Zloop mΩ, Z LINE, RCD Auto, R low 4, Varistor, R iso, R IZO, ZLOOP 4W, Zline 4W
 
-slovar_strojev = {1: "elektricna omara", 2: "inštalacija", 3: "stroj", 4: "strelovod"}
-
-vrsta_stroja = slovar_strojev.get(
-    int(input("1: elektricna omara, 2: inštalacija, 3: stroj, 4: strelovod\n"))
-)
-print(f"Tvoja odločitev {vrsta_stroja}")
-
-trafo_postaja = bool(
-    input("Ali je trafo postaja? Če je, napiši karkoli, če ni, pusti prazno! ")
-)
-
-t_varovalke_stroji_neprekinjenost = float(
-    input(
-        "Določi t_varovalke za neprekinjenost. Izbiraš med 0.1, 0.2, 0.4, 5.0 sekund."
-    )
-)
-
-I_varovalke_stroji_neprekinjenost = float(
-    input("Določi I_varovalke za neprekinjenost v amperih.")
-)
-
-if not I_varovalke_stroji_neprekinjenost:
-    I_varovalke_stroji_neprekinjenost = 0.3
-
-tip_varovalke_stroji_neprekinjenost = str(
-    input("Določi tip varovalke, recimo gG, gL, NV, B, C, D, K")
-)
-
-if tip_varovalke_stroji_neprekinjenost not in ["gG", "gL", "NV", "B", "C", "D", "K"]:
-    sys.exit("Ta tip varovalke ne obstaja.")
-
-meja_izolacijske_upornosti_stroji_riso_rdeca = float(
-    input("Določi rdečo mejo izoacijske upornosti v MOhm")
-)
-meja_izolacijske_upornosti_stroji_riso_oranzna = float(
-    input("Določi oranzna mejo izoacijske upornosti v MOhm")
-)
-
-
-if trafo_postaja:
+if "trafo_postaja" in locals() and trafo_postaja:
     print(Fore.GREEN + "--------------------------------------")
     print("|| Objekt ima svojo trafo postajo. || ")
     print("--------------------------------------" + Fore.WHITE)
@@ -67,8 +30,6 @@ else:
     print(Fore.RED + "--------------------------------------")
     print("|| Objekt nima svoje trafo postaje. || ")
     print("--------------------------------------" + Fore.WHITE)
-
-SEZNAM_VRST_MERITEV = model.SEZNAM_VRST_MERITEV
 
 with open("Podatki_z_merjenj.txt", encoding="utf-8") as podatki:
     celotno_besedilo_z_merjenj = (
@@ -85,7 +46,7 @@ with open("Podatki_z_merjenj.txt", encoding="utf-8") as podatki:
     # prvi string v seznamu e vedno prazen, zato geldaš samo naprej
     loceno_besedilo_na_kocke_teksta = celotno_besedilo_z_merjenj.split("🙈")[1:]
 
-    seznam_datumov_po_vrstnem_redu = model.najdi_po_vrsti_urejen_seznam_datumov(
+    seznam_datumov_po_vrstnem_redu = najdi_po_vrsti_urejen_seznam_datumov(
         celotno_besedilo_z_merjenj
     )
 
@@ -97,8 +58,8 @@ print(
     seznam_datumov_po_vrstnem_redu[-1],
 )
 
-seznam_vseh_meritev_brez_poti_na_koncu = []
-seznam_ustreznih_poti_do_kock = []
+seznam_vseh_kock_meritev_brez_poti_na_koncu = []
+seznam_ustreznih_poti_do_kock_meritev = []
 
 # Tole je treba prenesti v model!
 
@@ -108,7 +69,7 @@ def ustvari_seznam_vseh_meritev():
 
     for kocka_teksta in loceno_besedilo_na_kocke_teksta:
         slovar_meritev = {i: 0 for i in SEZNAM_VRST_MERITEV}
-        pot_do_druzine_meritev = model.najdi_pot_izven_razreda_Meritev(kocka_teksta)
+        pot_do_druzine_meritev = najdi_pot_izven_razreda_Meritev(kocka_teksta)
         print(pot_do_druzine_meritev)
 
         for vrsta_meritve in SEZNAM_VRST_MERITEV:
@@ -130,17 +91,17 @@ def ustvari_seznam_vseh_meritev():
                         )
                     ]
                 )
-                seznam_ustreznih_poti_do_kock.append(pot_do_druzine_meritev)
+                seznam_ustreznih_poti_do_kock_meritev.append(pot_do_druzine_meritev)
 
         else:
             seznam_indeksov_posameznih_meritev = []
-            seznam_vseh_meritev_brez_poti_na_koncu = []
+            seznam_vseh_kock_meritev_brez_poti_na_koncu = []
             for key in slovar_meritev:
                 seznam_indeksov_posameznih_meritev += [
                     m.start() for m in re.finditer(key, kocka_teksta)
                 ]
             seznam_indeksov_posameznih_meritev.sort()
-            seznam_vseh_meritev_brez_poti_na_koncu += [
+            seznam_vseh_kock_meritev_brez_poti_na_koncu += [
                 kocka_teksta[i:j]
                 for i, j in zip(
                     seznam_indeksov_posameznih_meritev,
@@ -148,28 +109,26 @@ def ustvari_seznam_vseh_meritev():
                 )
             ]
 
-            loceno_besedilo_zacasno = []
-            for meritev in seznam_vseh_meritev_brez_poti_na_koncu:
+            zacasen_seznam_za_vse_meritve = []
+            for meritev in seznam_vseh_kock_meritev_brez_poti_na_koncu:
                 if meritev.count("p//") == 0:
-                    loceno_besedilo_zacasno.append(
+                    zacasen_seznam_za_vse_meritve.append(
                         Meritev.Meritev(
                             meritev.replace("\n", " ").replace("\r\n", " ").strip()
                         )
                     )
                 # To zna biti malenkost nevarno, ampak se zdi da deluje
                 elif meritev.count("p//") > 0 and meritev.count("Z LINE") > 0:
-                    loceno_besedilo_zacasno.append(
+                    zacasen_seznam_za_vse_meritve.append(
                         Meritev.Meritev(
                             meritev.replace("\n", " ").replace("\r\n", " ").strip()
                         )
                     )
 
-            if loceno_besedilo_zacasno:
-                seznam_vseh_meritev.append(loceno_besedilo_zacasno)
-                seznam_ustreznih_poti_do_kock.append(pot_do_druzine_meritev)
+            if zacasen_seznam_za_vse_meritve:
+                seznam_vseh_meritev.append(zacasen_seznam_za_vse_meritve)
+                seznam_ustreznih_poti_do_kock_meritev.append(pot_do_druzine_meritev)
 
-    # print(seznam_vseh_meritev_brez_poti_na_koncu)
-    # print(seznam_vseh_meritev)
     return seznam_vseh_meritev
 
 
@@ -177,68 +136,48 @@ def ustvari_seznam_vseh_meritev():
 # vsaki kocki lahko priprada 1 ali več meritev
 seznam_vseh_meritev = ustvari_seznam_vseh_meritev()
 slovar_kock_in_ustreznih_poti = dict(
-    zip(range(len(seznam_vseh_meritev)), seznam_ustreznih_poti_do_kock)
+    zip(range(len(seznam_vseh_meritev)), seznam_ustreznih_poti_do_kock_meritev)
 )
 print(
     "Število vseh kock:",
     len(seznam_vseh_meritev),
     "\nŠtevilo ustreznih poti do kock:",
-    len(seznam_ustreznih_poti_do_kock),
+    len(seznam_ustreznih_poti_do_kock_meritev),
     "" + Fore.WHITE,
 )
 
-# tukaj zapiše v csv
 
 match vrsta_stroja:
-    case "elektricna omara":
+    case "električna omara":
         with open(
-            os.path.join(
-                "Csvji",
-                "ElektricneOmare",
-                f"csv_za_excel_datoteko_elektricne_omare.csv",
-            ),
+            CSVFILE_ELEKTRICNE_OMARE,
             "w",
             encoding="utf-8",
             newline="",
         ) as csvfile:
             csvfile.close()
 
-        excel_delovna_datoteka = load_workbook(
-            os.path.join(
-                "Templati",
-                "ElektricneOmare",
-                f"template_za_elektricne_omare_meritve.xlsx",
-            )
-        )
-        excel_delovna_datoteka.save(
-            os.path.join(
-                "Porocila", "ElektricneOmare", f"excel_datoteka_elektricne_omare.xlsx"
-            )
-        )
+        excel_delovna_datoteka = load_workbook(TEMPLATE_ELEKTRICNE_OMARE)
+        excel_delovna_datoteka.save(EXCELFILE_ELEKTRICNE_OMARE)
         excel_delovna_datoteka.close()
 
         for kocka in seznam_vseh_meritev:
-            model.zapisi_kocko_meritev_v_excel_elektricne_omare(
-                kocka, seznam_vseh_meritev, slovar_kock_in_ustreznih_poti
+            zapisi_kocko_meritev_v_excel_elektricne_omare(
+                kocka,
+                seznam_vseh_meritev,
+                slovar_kock_in_ustreznih_poti,
+                prevedi_v_anglescino,
             )
 
         with open(
-            os.path.join(
-                "Csvji",
-                "ElektricneOmare",
-                f"csv_za_excel_datoteko_elektricne_omare.csv",
-            ),
+            CSVFILE_ELEKTRICNE_OMARE,
             "r",
             encoding="utf-8",
             newline="",
         ) as csvfile:
             vrstice = csvfile.readlines()
 
-        excel_delovna_datoteka = load_workbook(
-            os.path.join(
-                "Porocila", "ElektricneOmare", f"excel_datoteka_elektricne_omare.xlsx"
-            )
-        )
+        excel_delovna_datoteka = load_workbook(EXCELFILE_ELEKTRICNE_OMARE)
 
         excel_delovni_list = excel_delovna_datoteka.active
         dolzina_templata = excel_delovni_list.max_column
@@ -277,7 +216,7 @@ match vrsta_stroja:
                     )
                     top_cell.font = Font(b=True)
                     top_cell.fill = PatternFill(
-                        start_color="F5C77E", end_color="F5C77E", fill_type="solid"
+                        start_color=RUMENO_BEZ, end_color=RUMENO_BEZ, fill_type="solid"
                     )
             excel_delovni_list.append(vrstica.split(";"))
             st_vrstic += 1
@@ -295,11 +234,7 @@ match vrsta_stroja:
                         start_color=barva, end_color=barva, fill_type="solid"
                     )
 
-        excel_delovna_datoteka.save(
-            os.path.join(
-                "Porocila", "ElektricneOmare", f"excel_datoteka_elektricne_omare.xlsx"
-            )
-        )
+        excel_delovna_datoteka.save(EXCELFILE_ELEKTRICNE_OMARE)
 
         print(f"Število vseh meritev: {st_vrstic}")
         print("-----------------------------------------------------------------")
@@ -313,7 +248,7 @@ match vrsta_stroja:
         for pripona in VSE_PRIPONE_DATOTEK:
             with open(
                 os.path.join(
-                    "Csvji", "Instalacije", f"csv_za_excel_datoteko_{pripona}.csv"
+                    "..", "Csvji", "Instalacije", f"csv_za_excel_datoteko_{pripona}.csv"
                 ),
                 "w",
                 encoding="utf-8",
@@ -323,25 +258,28 @@ match vrsta_stroja:
 
             excel_delovna_datoteka = load_workbook(
                 os.path.join(
-                    "Templati", "Instalacije", f"template_za_{pripona}_meritve.xlsx"
+                    "..",
+                    "Templati",
+                    "Instalacije",
+                    f"template_za_{pripona}_meritve.xlsx",
                 )
             )
             excel_delovna_datoteka.save(
                 os.path.join(
-                    "Porocila", "Instalacije", f"excel_datoteka_{pripona}.xlsx"
+                    "..", "Porocila", "Instalacije", f"excel_datoteka_{pripona}.xlsx"
                 )
             )
             excel_delovna_datoteka.close()
 
         for kocka in seznam_vseh_meritev:
-            model.zapisi_kocko_meritev_v_excel_instalacije(
+            zapisi_kocko_meritev_v_excel_instalacije(
                 kocka, seznam_vseh_meritev, slovar_kock_in_ustreznih_poti
             )
 
         for pripona in VSE_PRIPONE_DATOTEK:
             with open(
                 os.path.join(
-                    "Csvji", "Instalacije", f"csv_za_excel_datoteko_{pripona}.csv"
+                    "..", "Csvji", "Instalacije", f"csv_za_excel_datoteko_{pripona}.csv"
                 ),
                 "r",
                 encoding="utf-8",
@@ -351,7 +289,7 @@ match vrsta_stroja:
 
             excel_delovna_datoteka = load_workbook(
                 os.path.join(
-                    "Porocila", "Instalacije", f"excel_datoteka_{pripona}.xlsx"
+                    "..", "Porocila", "Instalacije", f"excel_datoteka_{pripona}.xlsx"
                 )
             )
             excel_delovni_list = excel_delovna_datoteka.active
@@ -390,7 +328,9 @@ match vrsta_stroja:
                         )
                         top_cell.font = Font(b=True)
                         top_cell.fill = PatternFill(
-                            start_color="F5C77E", end_color="F5C77E", fill_type="solid"
+                            start_color=RUMENO_BEZ,
+                            end_color=RUMENO_BEZ,
+                            fill_type="solid",
                         )
                 excel_delovni_list.append(vrstica.split(";"))
 
@@ -411,7 +351,7 @@ match vrsta_stroja:
 
             excel_delovna_datoteka.save(
                 os.path.join(
-                    "Porocila", "Instalacije", f"excel_datoteka_{pripona}.xlsx"
+                    "..", "Porocila", "Instalacije", f"excel_datoteka_{pripona}.xlsx"
                 )
             )
 
@@ -425,7 +365,9 @@ match vrsta_stroja:
         VSE_PRIPONE_DATOTEK = ["ZLOOP", "R ISO", "DISCHARGE TIME", "NEPREKINJENOST"]
         for pripona in VSE_PRIPONE_DATOTEK:
             with open(
-                os.path.join("Csvji", "Stroji", f"csv_za_excel_datoteko_{pripona}.csv"),
+                os.path.join(
+                    "..", "Csvji", "Stroji", f"csv_za_excel_datoteko_{pripona}.csv"
+                ),
                 "w",
                 encoding="utf-8",
                 newline="",
@@ -434,16 +376,18 @@ match vrsta_stroja:
 
             excel_delovna_datoteka = load_workbook(
                 os.path.join(
-                    "Templati", "Stroji", f"template_za_{pripona}_meritve.xlsx"
+                    "..", "Templati", "Stroji", f"template_za_{pripona}_meritve.xlsx"
                 )
             )
             excel_delovna_datoteka.save(
-                os.path.join("Porocila", "Stroji", f"excel_datoteka_{pripona}.xlsx")
+                os.path.join(
+                    "..", "Porocila", "Stroji", f"excel_datoteka_{pripona}.xlsx"
+                )
             )
             excel_delovna_datoteka.close()
 
         for kocka in seznam_vseh_meritev:
-            model.zapisi_kocko_meritev_v_excel_stroji(
+            zapisi_kocko_meritev_v_excel_stroji(
                 kocka,
                 seznam_vseh_meritev,
                 slovar_kock_in_ustreznih_poti,
@@ -451,11 +395,15 @@ match vrsta_stroja:
                 I_varovalke_neprekinjenost=I_varovalke_stroji_neprekinjenost,
                 tip_varovalke_neprekinjenost=tip_varovalke_stroji_neprekinjenost,
                 meja_izolacijske_upornosti_stroji_riso_rdeca=meja_izolacijske_upornosti_stroji_riso_rdeca,
+                prevedi_v_anglescino=prevedi_v_anglescino,
+                napetost_dotika=napetost_dotika,
             )
 
         for pripona in VSE_PRIPONE_DATOTEK:
             with open(
-                os.path.join("Csvji", "Stroji", f"csv_za_excel_datoteko_{pripona}.csv"),
+                os.path.join(
+                    "..", "Csvji", "Stroji", f"csv_za_excel_datoteko_{pripona}.csv"
+                ),
                 "r",
                 encoding="utf-8",
                 newline="",
@@ -463,7 +411,9 @@ match vrsta_stroja:
                 vrstice = csvfile.readlines()
 
             excel_delovna_datoteka = load_workbook(
-                os.path.join("Porocila", "Stroji", f"excel_datoteka_{pripona}.xlsx")
+                os.path.join(
+                    "..", "Porocila", "Stroji", f"excel_datoteka_{pripona}.xlsx"
+                )
             )
 
             excel_delovni_list = excel_delovna_datoteka.active
@@ -502,7 +452,9 @@ match vrsta_stroja:
                         )
                         top_cell.font = Font(b=True)
                         top_cell.fill = PatternFill(
-                            start_color="F5C77E", end_color="F5C77E", fill_type="solid"
+                            start_color=RUMENO_BEZ,
+                            end_color=RUMENO_BEZ,
+                            fill_type="solid",
                         )
                 excel_delovni_list.append(vrstica.split(";"))
 
@@ -527,7 +479,9 @@ match vrsta_stroja:
                             )
 
                 excel_delovna_datoteka.save(
-                    os.path.join("Porocila", "Stroji", f"excel_datoteka_{pripona}.xlsx")
+                    os.path.join(
+                        "..", "Porocila", "Stroji", f"excel_datoteka_{pripona}.xlsx"
+                    )
                 )
 
             print("-----------------------------------------------------------------")
@@ -537,49 +491,31 @@ match vrsta_stroja:
     # ---------------------------------------------------------------------------------------------------------------------------
     case "strelovod":
         with open(
-            os.path.join(
-                "Csvji",
-                "Strelovodi",
-                f"csv_za_excel_datoteko_strelovodi.csv",
-            ),
+            CSVFILE_STRELOVODI,
             "w",
             encoding="utf-8",
             newline="",
         ) as csvfile:
             csvfile.close()
 
-        excel_delovna_datoteka = load_workbook(
-            os.path.join(
-                "Templati",
-                "Strelovodi",
-                f"template_za_strelovodi_meritve.xlsx",
-            )
-        )
-        excel_delovna_datoteka.save(
-            os.path.join("Porocila", "Strelovodi", f"excel_datoteka_strelovodi.xlsx")
-        )
+        excel_delovna_datoteka = load_workbook(TEMPLATE_STRELOVODI)
+        excel_delovna_datoteka.save(EXCELFILE_STRELOVODI)
         excel_delovna_datoteka.close()
 
         for kocka in seznam_vseh_meritev:
-            model.zapisi_kocko_meritev_v_excel_strelovodi(
+            zapisi_kocko_meritev_v_excel_strelovodi(
                 kocka, seznam_vseh_meritev, slovar_kock_in_ustreznih_poti
             )
 
         with open(
-            os.path.join(
-                "Csvji",
-                "Strelovodi",
-                f"csv_za_excel_datoteko_strelovodi.csv",
-            ),
+            CSVFILE_STRELOVODI,
             "r",
             encoding="utf-8",
             newline="",
         ) as csvfile:
             vrstice = csvfile.readlines()
 
-        excel_delovna_datoteka = load_workbook(
-            os.path.join("Porocila", "Strelovodi", f"excel_datoteka_strelovodi.xlsx")
-        )
+        excel_delovna_datoteka = load_workbook(EXCELFILE_STRELOVODI)
 
         excel_delovni_list = excel_delovna_datoteka.active
         dolzina_templata = excel_delovni_list.max_column
@@ -617,7 +553,7 @@ match vrsta_stroja:
                     )
                     top_cell.font = Font(b=True)
                     top_cell.fill = PatternFill(
-                        start_color="F5C77E", end_color="F5C77E", fill_type="solid"
+                        start_color=RUMENO_BEZ, end_color=RUMENO_BEZ, fill_type="solid"
                     )
             excel_delovni_list.append(vrstica.split(";"))
 
@@ -634,9 +570,7 @@ match vrsta_stroja:
                         start_color=barva, end_color=barva, fill_type="solid"
                     )
 
-        excel_delovna_datoteka.save(
-            os.path.join("Porocila", "Strelovodi", f"excel_datoteka_strelovodi.xlsx")
-        )
+        excel_delovna_datoteka.save(EXCELFILE_STRELOVODI)
 
         print("-----------------------------------------------------------------")
 
